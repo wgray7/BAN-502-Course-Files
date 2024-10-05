@@ -1,0 +1,212 @@
+---
+title: "Classification Trees Quiz"
+output: word_document
+date: "2024-09-23"
+---
+Libraries
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(RColorBrewer)
+```
+
+Read in Dataset
+```{r}
+Heart <- read_csv("heart_disease-1.csv")
+summary(Heart)
+str(Heart)
+```
+
+Convert to factors and recode HeartDisease varible 
+```{r}
+Heart = Heart %>% mutate(Sex = as_factor(Sex)) %>% 
+  mutate(ChestPainType = as_factor(ChestPainType)) %>% mutate(RestingECG = as_factor(RestingECG)) %>%
+  mutate(HeartDisease = as_factor(HeartDisease)) %>% 
+  mutate(HeartDisease = fct_recode(HeartDisease,"No"="0","Yes"="1")) %>%
+  mutate(ExerciseAngina = as_factor(ExerciseAngina))%>% mutate(ST_Slope = as_factor(ST_Slope))
+
+str(Heart)
+```
+
+#Question 1
+Split the data into training and testing sets. Your training set should have 70% of the data. Use a random number (set.seed) of 12345. Stratify your split by the response variable "HeartDisease"
+```{r}
+set.seed(12345)
+Heart_split = initial_split(Heart, prop = 0.7, strata = HeartDisease) #70% in training
+train = training(Heart_split)
+test = testing(Heart_split)
+```
+
+**How many rows are in the training set?**
+642 rows 
+
+#Question 2
+Create a classification tree to predict "HeartDisease" in the training set (using all of the other variables as predictors). Plot the tree. You do not need to manually tune the complexity parameter (i.e., it's ok to allow R to try different cp values on its own). 
+```{r}
+Heart_recipe = recipe(HeartDisease ~ ., Heart)
+
+tree_model = decision_tree() %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+Heart_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(Heart_recipe)
+
+Heart_fit = fit(Heart_wflow, Heart)
+```
+```{r}
+#look at tree's fit 
+Heart_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit") 
+```
+```{r}
+#extract the tree's fit from the fit object
+tree = Heart_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#plot the tree
+rpart.plot(tree)
+```
+**The first split in the tree is a split on which variable?**
+ST_Slope
+
+#Question 3
+Examin the complexity parameter (cp) values tried by R
+
+Which cp value is optimal (recall that the optimal cp corresponds to the miniminzed "xerror" value)? Report your answer to two decimal places.
+Look at the "rpart" complexity parameter "cp". 
+```{r}
+Heart_fit$fit$fit$fit$cptable
+```
+**.01
+
+#Question 4
+Use a tuning grid (as we did in the Titanic problem) to allow R to try 25 different values for the complexity parameter (cp). R will select reasonable values. Use 5-fold k-fold cross-validation (don't forget to set up your folds). Use a seed of 123 when setting up your folds.
+
+Create our folds
+```{r}
+set.seed(123)
+folds = vfold_cv(Heart, v = 5)
+```
+
+```{r}
+Heart_recipe = recipe(HeartDisease ~., Heart) %>%
+  step_dummy(all_nominal(),-all_outcomes())
+
+tree_model = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+tree_grid = grid_regular(cost_complexity(),
+                          levels = 25) #try 25 sensible values for cp
+
+Heart_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(Heart_recipe)
+
+tree_res = 
+  Heart_wflow %>% 
+  tune_grid(
+    resamples = folds,
+    grid = tree_grid
+    )
+
+tree_res
+```
+
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) 
+```
+
+```{r}
+best_tree = tree_res %>%
+  select_best(metric = "accuracy")
+
+best_tree
+```
+What is the accuracy from the plot? 
+.39
+
+#Question 5 
+Which cp value (to four decimal places) yields the "optimal" accuracy value? 
+```{r}
+Heart_fit$fit$fit$fit$cptable
+```
+**.0100 or .0146
+
+```{r}
+final_wf = 
+  Heart_wflow %>% 
+  finalize_workflow(best_tree)
+```
+
+```{r}
+tree = Heart_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#plot the tree
+rpart.plot(tree)
+```
+
+
+```{r}
+final_fit = fit(final_wf, train)
+
+tree = final_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+rpart.plot(tree)
+```
+
+#Question 6
+Plot the tree that corresponds to the cp value from question 5. Don't forget to finalize your workflow and generate your final fit before trying to plot
+Predictions
+
+
+#Question 7
+What  is  the  accuracy  (on  the  training  set)  of  the  “tree”  that  you  generated  in  Question  6?  Take your time and think about how to determine this value.  Report your answer to four decimal places
+
+Caret confusion matrix and accuracy, etc. calcs  
+```{r}
+treepred = predict(final_fit, train, type = "class")
+head(treepred)
+```
+
+```{r}
+confusionMatrix(treepred$.pred_class,train$HeartDisease,positive="Yes") #predictions first then actual
+```
+
+#Question 7
+.8754
+
+#Question 8
+.9239
+
+#Question 9
+.5530
+
+#Question10
+```{r}
+treepred = predict(final_fit, test, type = "class")
+head(treepred)
+```
+```{r}
+confusionMatrix(treepred$.pred_class,test$HeartDisease,positive="Yes") #predictions first then actual
+```
+#.8478
