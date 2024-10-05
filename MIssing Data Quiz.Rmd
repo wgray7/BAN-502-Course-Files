@@ -1,0 +1,77 @@
+---
+title: "Missing Data"
+output: word_document
+date: "2024-09-22"
+---
+Libraries
+```{r}
+library(tidyverse)
+library(VIM)
+library(mice)
+
+```
+read in dataset
+```{r}
+Grades = read.csv("class-grades.csv")
+```
+
+**Question 1** 
+For which variable is there missing data? 
+```{r}
+str(Grades)
+summary(Grades)
+skim(Grades)
+```
+***ANSWER*** 
+Tutorial, Midterm, TakeHome, Final
+
+**Question 2**
+Use the VIM package to visualize missingness. Are there any students that are missing multiple piecies of data? 
+```{r}
+vim_plot = aggr(Grades, numbers = TRUE, prop = c(TRUE, FALSE),cex.axis=.7)
+#the cex.axis reduces size of text on x-axis so labels fit better
+```
+**Answer** 
+Yes, 1 student
+
+**Question 3**
+Use row-wise deletion of missing values to create a new data frame. How many rows remain in this data frame? 
+```{r}
+Grades_rowdel = Grades %>% drop_na() 
+#alternatively can specify which variable(s) on which to do the drop_na
+#drop_na(Age)
+skim(Grades_rowdel)
+```
+**Answer**
+89 Rows
+
+**Question 4**
+Use column-wise deletion of missing values to create a new data frame (from the origninal data frame not from the data frame create in Task 3) How many columns remain in this data frame? 
+```{r}
+Grades_coldel = Grades %>% select(-Tutorial, -Midterm, -TakeHome, -Final) 
+skim(Grades_coldel)
+```
+**Answer**
+0, None
+
+**Question 5**
+Which approach (Taks 3 or Task 4) seems preferable for this dataset? Briefly discuss your answer.
+# row-wise deletion would be the best method because if you use column-wise deletion you will be left with no data to use due to all of the columns containing missing data. 
+
+**Task 6**
+Use the "mice" package to impute the missing data in this dataset. Set "m=5" and "method =" pmm" in imputation. You MUST use a random number see of 123 for this imputation. What is the mean value for the "Final" variable after imputation? 
+```{r}
+set.seed(123) #sets seed for random number generator
+imp_missing = mice(Grades, m=5, method='pmm', printFlag=FALSE)
+#m is the number of imputations, 5 is a reasonable value as a default
+#pmm is "predictive mean matching" = imputation method for numeric data
+#printFlag reduces amount of output
+summary(imp_missing)
+```
+#Merge the imputed values into our Grades data frame  
+```{r}
+Grades_complete = complete(imp_missing) 
+summary(Grades_complete)
+```
+***Answer***
+68.33
